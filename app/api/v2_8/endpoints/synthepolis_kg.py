@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_role
 from app.models.user import User
 from app.db.session import get_db
 
@@ -381,7 +381,7 @@ def extract_synthepolis_bdi(db: Session, candidate_id: int) -> dict:
 def build_campaign_kg(
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("sysadmin", "supervisor")),
 ):
     """Build Knowledge Graph from a SynthePolis campaign."""
     try:
@@ -495,7 +495,7 @@ def get_candidate_kg(
 def extract_bdi_candidate(
     candidate_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("sysadmin", "supervisor", "psychologist")),
 ):
     """Extract BDI profile for a SynthePolis political actor."""
     try:

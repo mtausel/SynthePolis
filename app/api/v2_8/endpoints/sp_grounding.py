@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_role
 from app.models.user import User
 from app.db.session import get_db
 from app.services.grounding.perplexity_client import get_perplexity_client
@@ -663,7 +663,7 @@ def _auto_generate_queries(db: Session, campaign_id: int, campaign: dict, candid
 def political_check(
     request: PoliticalCheckRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("sysadmin", "supervisor", "psychologist")),
 ):
     """Trigger political news check for a campaign."""
     try:
@@ -788,7 +788,7 @@ def update_grounding_config(
     auto_bdi_refresh: Optional[bool] = None,
     source_lang: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("sysadmin", "supervisor")),
 ):
     """Update grounding config for a campaign."""
     updates = []
@@ -824,7 +824,7 @@ def update_grounding_config(
 def auto_config(
     campaign_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role("sysadmin", "supervisor")),
 ):
     """Auto-generate search queries from campaign candidates + region."""
     campaign = db.execute(
