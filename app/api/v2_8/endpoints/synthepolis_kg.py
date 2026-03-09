@@ -6,6 +6,7 @@ candidates, political incidents, documents, parties, issues, studies.
 import json
 import hashlib
 import logging
+from app.services.embeddings.client import get_embedding_client
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -26,15 +27,39 @@ router = APIRouter()
 def _add_node(db: Session, vertical: str, node_type: str, entity_id: int,
               label: str, properties: dict, node_subtype: str = None) -> int:
     """Insert a KG node and return its ID."""
-    result = db.execute(
-        text("""INSERT INTO kg_nodes (vertical, node_type, node_subtype, entity_id, label, properties)
-                 VALUES (:v, :nt, :ns, :eid, :label, :props)
-                 ON CONFLICT (vertical, node_type, entity_id, node_subtype) DO UPDATE
-                 SET label = EXCLUDED.label, properties = EXCLUDED.properties
-                 RETURNING id"""),
-        {"v": vertical, "nt": node_type, "ns": node_subtype or "",
-         "eid": entity_id, "label": label[:200], "props": json.dumps(properties)}
-    )
+    embedding_text = f"{node_type}: {label[:200]}"
+    embedding_vec = None
+    try:
+        emb_client = get_embedding_client()
+        vec = emb_client.embed_one_sync(embedding_text)
+        if vec:
+            embedding_vec = str(vec)
+    except Exception as e:
+        logger.warning(f"Embedding generation skipped: {e}")
+
+    if embedding_vec:
+        result = db.execute(
+            text("""INSERT INTO kg_nodes (vertical, node_type, node_subtype, entity_id, label, properties, embedding_text, embedding)
+                     VALUES (:v, :nt, :ns, :eid, :label, :props, :et, :emb)
+                     ON CONFLICT (vertical, node_type, entity_id, node_subtype) DO UPDATE
+                     SET label = EXCLUDED.label, properties = EXCLUDED.properties,
+                         embedding_text = EXCLUDED.embedding_text, embedding = EXCLUDED.embedding
+                     RETURNING id"""),
+            {"v": vertical, "nt": node_type, "ns": node_subtype or "",
+             "eid": entity_id, "label": label[:200], "props": json.dumps(properties),
+             "et": embedding_text, "emb": embedding_vec}
+        )
+    else:
+        result = db.execute(
+            text("""INSERT INTO kg_nodes (vertical, node_type, node_subtype, entity_id, label, properties, embedding_text)
+                     VALUES (:v, :nt, :ns, :eid, :label, :props, :et)
+                     ON CONFLICT (vertical, node_type, entity_id, node_subtype) DO UPDATE
+                     SET label = EXCLUDED.label, properties = EXCLUDED.properties, embedding_text = EXCLUDED.embedding_text
+                     RETURNING id"""),
+            {"v": vertical, "nt": node_type, "ns": node_subtype or "",
+             "eid": entity_id, "label": label[:200], "props": json.dumps(properties),
+             "et": embedding_text}
+        )
     return result.fetchone()[0]
 
 
